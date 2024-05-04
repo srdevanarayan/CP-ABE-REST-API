@@ -7,6 +7,11 @@ use rocket::serde::json::Json;
 use rocket::State;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
+use rocket_cors;
+use rocket::fairing::{Fairing, Info, Kind};
+use rocket::http::Header;
+use rocket::log::private::debug;
+use rocket::{Request, Response};
 
 lazy_static! {
     static ref INITIALIZED: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
@@ -123,9 +128,38 @@ fn decrypt(data: Json<DecryptionData>) -> Result<String, String> {
     }
 }
 
+/// Catches all OPTION requests in order to get the CORS related Fairing triggered.
+#[options("/<_..>")]
+fn all_options() {
+    /* Intentionally left empty */
+}
+
+pub struct Cors;
+
+#[rocket::async_trait]
+impl Fairing for Cors {
+    fn info(&self) -> Info {
+        Info {
+            name: "Cross-Origin-Resource-Sharing Fairing",
+            kind: Kind::Response,
+        }
+    }
+
+    async fn on_response<'r>(&self, request: &'r Request<'>, response: &mut Response<'r>) {
+        response.set_header(Header::new("Access-Control-Allow-Origin", "*"));
+        response.set_header(Header::new(
+            "Access-Control-Allow-Methods",
+            "POST, PATCH, PUT, DELETE, HEAD, OPTIONS, GET",
+        ));
+        response.set_header(Header::new("Access-Control-Allow-Headers", "*"));
+        response.set_header(Header::new("Access-Control-Allow-Credentials", "true"));
+    }
+}
+
 #[launch]
 fn rocket() -> _ {
     rocket::build()
+    .attach(Cors)
         .manage(INITIALIZED.clone())
-        .mount("/", routes![syssetup, generate_key, encrypt, decrypt])
+        .mount("/", routes![syssetup, generate_key, encrypt, decrypt,all_options])
 }
